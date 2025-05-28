@@ -1,0 +1,40 @@
+﻿#pragma kernel Calculate
+#pragma enable_d3d11_debug_symbols
+struct Point
+{
+    float Mass;
+    float3 Position;
+    float3 Velocity;
+    float padding;
+};
+
+float gamma; //阻尼项
+float deltaTime;
+float meshVertexNums;
+RWStructuredBuffer<Point> _NowPoint; //代表现在的顶点的状态
+RWStructuredBuffer<Point> _PostPoint; //代表上次的顶点的状态
+RWStructuredBuffer<Point> _PrePoint; //初始状态
+
+StructuredBuffer<Point> outputPoint; //作为共享内存的Buffer直接传递给物体 减少等待同步的情况
+
+//id的转换 转换到StructuredBuffer下 一一对应吧.
+int IdTransform(uint3 id)
+{
+    //把一个轴填满了才去下一个轴 Dispatch(totalnum / 256 .totalnum / 1024)
+    return id.x + id.y * 1024 + id.z * 1024 * 1024;
+}
+[numthreads(64, 1, 1)]
+void Calculate(uint3 id : SV_DispatchThreadID)
+{
+      //在StructuredBuffer中的索引
+    int index = IdTransform(id);
+    
+    if (index >= meshVertexNums)
+        return;
+    
+    float3 velocity = (_NowPoint[index].Position - _PostPoint[index].Position) / deltaTime;
+    //阻尼的影响
+    //_NowPoint[index].Velocity = (1 - gamma) * velocity;
+    _NowPoint[index].Velocity = velocity * (1 - gamma);
+    
+}

@@ -1,0 +1,162 @@
+﻿#pragma kernel CSProj_1;
+#pragma kernel CSProj_2;
+#pragma kernel CSProj_3;
+#pragma enable_d3d11_debug_symbols
+
+float VoxelSize;
+float3 WindFieldSize;
+float deltaTime;
+RWTexture3D<half3> InputResult;
+RWTexture3D<half2> Div_Pressure_Input;
+RWTexture3D<half2> Div_Pressure_Output;
+RWTexture3D<half3> OutputResult;
+
+//散度场 一个核 第一步
+half WindProjectCompute_Div(uint3 id, half dt,float voxelSize)
+{
+    half h = voxelSize;
+    
+     //索引
+    uint3 Self = uint3(id.x, id.y, id.z);
+    uint3 Front = uint3(id.x + 1, id.y, id.z);
+    uint3 Back = uint3(id.x - 1, id.y, id.z);
+    uint3 Up = uint3(id.x, id.y + 1, id.z);
+    uint3 Down = uint3(id.x, id.y - 1, id.z);
+    uint3 Left = uint3(id.x, id.y, id.z + 1);
+    uint3 Right = uint3(id.x, id.y, id.z - 1);
+    
+    half3 D_Self = InputResult[Self];
+    half3 D_Front = id.x + 1 <= WindFieldSize.x  ? InputResult[Front] : 0;
+    half3 D_Back = id.x - 1 >= 0 ? InputResult[Back] : 0;
+    half3 D_Up = id.y + 1 <= WindFieldSize.z  ? InputResult[Up] : 0;
+    half3 D_Down = id.y - 1 >= 0 ? InputResult[Down] : 0;
+    half3 D_Left = id.z + 1 <= WindFieldSize.y ? InputResult[Left] : 0;
+    half3 D_Right = id.z - 1 >= 0 ? InputResult[Right] : 0;
+    
+    
+    
+    // 散度场
+    half div = 0.5f  * (D_Front.x - D_Back.x +
+                                      D_Up.z - D_Down.z +
+                                      D_Left.y - D_Right.y) / h;
+    
+    return div;
+}
+//压力，第二步
+half WindProjectCompute_Pres(uint3 id, half dt, float voxelSize)
+{
+    half h = voxelSize;
+    
+     //索引
+    uint3 Self = uint3(id.x, id.y, id.z);
+    uint3 Front = uint3(id.x + 1, id.y, id.z);
+    uint3 Back = uint3(id.x - 1, id.y, id.z);
+    uint3 Up = uint3(id.x, id.y + 1, id.z);
+    uint3 Down = uint3(id.x, id.y - 1, id.z);
+    uint3 Left = uint3(id.x, id.y, id.z + 1);
+    uint3 Right = uint3(id.x, id.y, id.z - 1);
+    /*
+    half D_Self = Div_Pressure_Input[Self].y;
+    half D_Front = id.x + 1 < 256 ? Div_Pressure_Input[Front].y : -D_Self;
+    half D_Back = id.x - 1 >= 0 ? Div_Pressure_Input[Back].y : -D_Self;
+    half D_Up = id.y + 1 < 256 ? Div_Pressure_Input[Up].y : -D_Self;
+    half D_Down = id.y - 1 >= 0 ? Div_Pressure_Input[Down].y : -D_Self;
+    half D_Left = id.z + 1 < 16 ? Div_Pressure_Input[Left].y : -D_Self;
+    half D_Right = id.z - 1 >= 0 ? Div_Pressure_Input[Right].y : -D_Self;
+*/
+    int num = 0;
+    half Sum = 0;
+    if ((int) id.x + 1 <= WindFieldSize.x - 1)
+    {
+        num++;
+        Sum = Sum + Div_Pressure_Input[Front].y;
+    }
+    if ((int) id.x - 1 >= 0)
+    {
+        num++;
+        Sum = Sum + Div_Pressure_Input[Back].y;
+    }
+    if ((int) id.y + 1 <= WindFieldSize.z - 1)
+    {
+        num++;
+        Sum = Sum + Div_Pressure_Input[Up].y;
+    }
+    if ((int) id.y - 1 >= 0)
+    {
+        num++;
+        Sum = Sum + Div_Pressure_Input[Down].y;
+    }
+    if ((int) id.z + 1 <= WindFieldSize.y - 1)
+    {
+        num++;
+        Sum = Sum + Div_Pressure_Input[Left].y;
+    }
+    if ((int) id.z - 1 >= 0)
+    {
+        num++;
+        Sum = Sum + Div_Pressure_Input[Right].y;
+    }
+
+    half pressure = (-Div_Pressure_Input[Self].x * h * h + Sum ) / 6;
+    
+    return pressure;
+}
+//第四项第三步
+half3 WindProjectCompute_Proj(uint3 id, half dt, float voxelSize)
+{
+    half U, V, W;
+    half h = voxelSize;
+    
+     //索引
+    uint3 Self = uint3(id.x, id.y, id.z);
+    uint3 Front = uint3(id.x + 1, id.y, id.z);
+    uint3 Back = uint3(id.x - 1, id.y, id.z);
+    uint3 Up = uint3(id.x, id.y + 1, id.z);
+    uint3 Down = uint3(id.x, id.y - 1, id.z);
+    uint3 Left = uint3(id.x, id.y, id.z + 1);
+    uint3 Right = uint3(id.x, id.y, id.z - 1);
+    
+    half D_Self = Div_Pressure_Input[Self].y;
+    half D_Front = id.x + 1 <= WindFieldSize.x  ? Div_Pressure_Input[Front].y : 0;
+    half D_Back = id.x - 1 >= 0 ? Div_Pressure_Input[Back].y : 0;
+    half D_Up = id.y + 1 <= WindFieldSize.z ? Div_Pressure_Input[Up].y : 0;
+    half D_Down = id.y - 1 >= 0 ? Div_Pressure_Input[Down].y : 0;
+    half D_Left = id.z + 1 <= WindFieldSize.y  ? Div_Pressure_Input[Left].y : 0;
+    half D_Right = id.z - 1 >= 0 ? Div_Pressure_Input[Right].y : 0;
+    
+     //Input[id].xyz = Wvelocity.xzy  交换的前提
+    U = InputResult[Self].x;
+    V = InputResult[Self].y;
+    W = InputResult[Self].z;
+    
+    
+    //减梯度得到旋度
+    U -= (D_Front - D_Back) / (2 * h);
+    W -= (D_Up - D_Down) / (2 * h);
+    V -= (D_Left - D_Right) / (2 * h);
+    
+    
+    
+    half3 project = half3(U, V, W);
+    
+    return project;
+}
+
+[numthreads(8, 8, 8)]
+void CSProj_1(uint3 id : SV_DispatchThreadID)
+{
+    float div = WindProjectCompute_Div(id, deltaTime,VoxelSize);
+    Div_Pressure_Output[id] = float2(div, 0);
+}
+[numthreads(8, 8, 8)]
+void CSProj_2(uint3 id : SV_DispatchThreadID)
+{
+    float pre = WindProjectCompute_Pres(id, deltaTime,VoxelSize);
+    Div_Pressure_Output[id] = float2(Div_Pressure_Input[id].x, pre);
+}
+[numthreads(8, 8, 8)]
+void CSProj_3(uint3 id : SV_DispatchThreadID)
+{
+    float3 project = WindProjectCompute_Proj(id, deltaTime,VoxelSize);
+    OutputResult[id] = project;
+}

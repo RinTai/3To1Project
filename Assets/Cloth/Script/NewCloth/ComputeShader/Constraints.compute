@@ -1,0 +1,79 @@
+#pragma kernel Constraint_Distance
+#pragma kernel Constraint_Bend
+#pragma kernel Constraint_Fixed
+#pragma kernel Constraint_Shear
+#pragma kernel Constraint_Size
+
+#include "D:\unityProj\My project (1)\Assets\Cloth\Script\NewCloth\ComputeShader\DataHub.hlsl"
+
+float alpha;
+float4 globalValue[10];
+RWStructuredBuffer<PointInfo> _PointBuffer;
+RWStructuredBuffer<DistanceConstraintInfo> _DistanceConstraint;
+
+[numthreads(64,1,1)]
+void Constraint_Distance(uint3 id : SV_DispatchThreadID)
+{
+    //得到当前的遍历信息
+    DistanceConstraintInfo myInfo = _DistanceConstraint[id.x];
+    
+    int v0 = myInfo.vIndex0;
+    int v1 = myInfo.vIndex1;
+    
+    PointInfo p0 = _PointBuffer[v0];
+    PointInfo p1 = _PointBuffer[v1];
+    
+    float m0 = p0.mass;
+    float m1 = p1.mass;
+    float mT = m0 + m1;
+
+    float3 pos0 = p0.position;
+    float3 pos1 = p1.position;
+    
+    float3 dis = distance(pos0, pos1);
+    float3 dir = pos1 - pos0;
+    
+    //gradC = (xo-x1) / |x0-x1| 
+    float3 gradC_p0 = -dir / dis;
+    float3 gradC_p1 = dir / dis;
+    float gradC_Length = length(gradC_p0);
+        
+    float3 C = dis - myInfo.restDistance;
+    float gradC_2 = pow(gradC_Length, 2);//这个实际上是平方
+    
+    // 我们采用的是每帧更新 n次约束，因此lambda每次都应该重置为0,也就可以将d_lambda等同于lambda
+    // d_lambda = (-C - alpha*lambda) / (gradC * w_T * gradC_T + alpha)
+    float d_lambda = (-C) / (mT * gradC_2 + alpha);
+   
+    //x = x + deltaX where deltaX = gradC * w_T(i) * lambda
+    float3 correction_x0 = d_lambda * gradC_p0;
+    float3 correction_x1 = d_lambda * gradC_p1;
+    
+    _PointBuffer[v0].position += m0 * correction_x0;
+    _PointBuffer[v1].position += m1 * correction_x1; //对上述求导过程未区分的修正
+}
+
+[numthreads(64, 1, 1)]
+void Constraint_Bend(uint3 id : SV_DispatchThreadID)
+{
+
+}
+
+[numthreads(64, 1, 1)]
+void Constraint_Fixed(uint3 id : SV_DispatchThreadID)
+{
+
+}
+
+[numthreads(64, 1, 1)]
+void Constraint_Shear(uint3 id : SV_DispatchThreadID)
+{
+
+}
+
+[numthreads(64, 1, 1)]
+void Constraint_Size(uint3 id : SV_DispatchThreadID)
+{
+
+}
+

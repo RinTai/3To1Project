@@ -1,0 +1,57 @@
+﻿#pragma kernel Interaction
+#pragma enable_d3d11_debug_symbols
+struct Point
+{
+    float Mass;
+    float3 Position;
+    float3 Velocity;
+    float padding;
+};
+
+Texture3D<float4> _WindField; //风场纹理
+float _WindCenter;
+
+float4x4 WorldToLocal;
+int _RawCount;
+float deltaTime;
+float meshVertexNums;
+RWStructuredBuffer<Point> _NowPoint; //代表现在的顶点的状态
+RWStructuredBuffer<Point> _PostPoint; //代表上次的顶点的状态
+RWStructuredBuffer<Point> _PrePoint; //初始状态
+
+//id的转换 转换到StructuredBuffer下 一一对应吧.
+int IdTransform(uint3 id)
+{
+    //把一个轴填满了才去下一个轴 Dispatch(totalnum / 256 .totalnum / 1024)
+    return id.x + id.y * 1024 + id.z * 1024 * 1024 ;
+}
+[numthreads(64, 1, 1)]
+void Interaction(uint3 id : SV_DispatchThreadID)
+{
+       //在StructuredBuffer中的索引
+    int index = IdTransform(id);
+    
+    if (index >= meshVertexNums||index < 0)
+        return;
+    
+
+    float3 Force = mul(float4(0, -1.0f, 0,0), WorldToLocal).xyz;
+    
+    
+     //目标 让他动得快一点 3-25
+        _NowPoint[index].Velocity += deltaTime * float3(0.0f,-9.0f,0.0f);
+    //if (index <= 121&& index >= 64)
+        //_NowPoint[index].Velocity += deltaTime * float3(0, 10.0f, 0);
+    
+        _NowPoint[_RawCount - 1].Velocity = float3(0, 0, 0);
+        _NowPoint[0].Velocity = float3(0, 0, 0);
+    
+        _PostPoint[index].Position = _NowPoint[index].Position;
+      
+        _NowPoint[index].Position += _NowPoint[index].Velocity * deltaTime;
+    
+        float3 pos = _NowPoint[index].Position;
+    
+        _NowPoint[index].Position = pos;
+    
+}
