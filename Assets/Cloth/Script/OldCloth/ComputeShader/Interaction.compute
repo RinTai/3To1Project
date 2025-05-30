@@ -34,6 +34,10 @@ void Interaction(uint3 id : SV_DispatchThreadID)
     if (index >= meshVertexNums||index < 0)
         return;
     
+    float3 velocity = (_NowPoint[index].Position - _PostPoint[index].Position) / deltaTime;
+    //阻尼的影响
+    //_NowPoint[index].Velocity = (1 - gamma) * velocity;
+    _NowPoint[index].Velocity = velocity * (1 - 0);
 
     float3 Force = mul(float4(0, -1.0f, 0,0), WorldToLocal).xyz;
     
@@ -46,9 +50,11 @@ void Interaction(uint3 id : SV_DispatchThreadID)
         _NowPoint[_RawCount - 1].Velocity = float3(0, 0, 0);
         _NowPoint[0].Velocity = float3(0, 0, 0);
     
+    float3 TempPos = _PostPoint[index].Position;
+    
         _PostPoint[index].Position = _NowPoint[index].Position;
       
-        _NowPoint[index].Position += _NowPoint[index].Velocity * deltaTime;
+        _NowPoint[index].Position = TempPos  + _NowPoint[index].Velocity * deltaTime;
     
         float3 pos = _NowPoint[index].Position;
     

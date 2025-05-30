@@ -4,6 +4,7 @@ using UnityEngine;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.VisualScripting;
+using System.Linq;
 
 
 /// <summary>
@@ -159,6 +160,10 @@ public class ClothMesh
         this._indices = indices;
         this._normals = normals;
         this._Testmesh = meshFilter.mesh;
+
+        _neighborSet = new NeighborSet<int, int>();
+        _edgeList = new List<Edge>();
+        _vertexCount = vertices.Length;
 
         SetPointFormTriangle(meshFilter.mesh);
     }

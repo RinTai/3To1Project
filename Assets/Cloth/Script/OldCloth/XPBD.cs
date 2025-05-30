@@ -58,7 +58,7 @@ public class Constraint
     //基础3Buffer 
     public ComputeBuffer m__PrePointBuffer;
     public ComputeBuffer m__PostPointBuffer;
-    public ComputeBuffer m__NowPointBuffer;
+    public ComputeBuffer m__PredictPointBuffer;
 
     public ComputeBuffer m_NeighborDataBuffer;
     public ComputeBuffer m_NeighborIndexBuffer;
@@ -73,7 +73,7 @@ public class Constraint
     public virtual void InitialBuffer(ComputeBuffer nowPosBuffer,ComputeBuffer prePosBuffer,ComputeBuffer postPosBuffer,ComputeBuffer nDataBuffer,ComputeBuffer nIndexBuffer)
     {
         m__PrePointBuffer = prePosBuffer;
-        m__NowPointBuffer = nowPosBuffer;
+        m__PredictPointBuffer = nowPosBuffer;
         m__PostPointBuffer = postPosBuffer;
 
         m_NeighborDataBuffer = nDataBuffer;
@@ -146,7 +146,7 @@ public class Constraint_Distance : Constraint
     public override void Execute( int DispatchNumX, int DispatchNumY, int DispatchNumZ, float dt, float Stiffness, float Gamma, int StepNums)
     {
         ConstraintCompute.SetFloat("gamma", Gamma);
-        ConstraintCompute.SetFloat("alpha",  1 / (Stiffness * (dt / StepNums) * (dt / StepNums)));
+        ConstraintCompute.SetFloat("alpha",  1 / Stiffness);
         ConstraintCompute.SetFloat("deltaTime", dt / StepNums);
         ConstraintCompute.SetInt("simulationTimes", StepNums);
         ConstraintCompute.SetInt("meshVertexNums", VertexNum);
@@ -157,14 +157,14 @@ public class Constraint_Distance : Constraint
    
 
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, ConstraintKernelIndex, m_PrePosBufferName, m__PrePointBuffer);
-        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, ConstraintKernelIndex, m_NowPosBufferName, m__NowPointBuffer);
+        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, ConstraintKernelIndex, m_NowPosBufferName, m__PredictPointBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, ConstraintKernelIndex, m_PostPosBufferName, m__PostPointBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, ConstraintKernelIndex, m_NeighborDateBufferName, m_NeighborDataBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, ConstraintKernelIndex, m_NeighborIndexBufferName, m_NeighborIndexBuffer);
         ConstraintCmd.DispatchCompute(ConstraintCompute, ConstraintKernelIndex, DispatchNumX, DispatchNumY, DispatchNumZ);
 
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex, m_PrePosBufferName, m__PrePointBuffer);
-        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex, m_NowPosBufferName, m__NowPointBuffer);
+        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex, m_NowPosBufferName, m__PredictPointBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex, m_PostPosBufferName, m__PostPointBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex, m_NeighborDateBufferName, m_NeighborDataBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex, m_NeighborIndexBufferName, m_NeighborIndexBuffer);
@@ -172,21 +172,21 @@ public class Constraint_Distance : Constraint
 
         //感觉这个更像不可塑的约束 mesh不能压缩只能抖动
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_2, m_PrePosBufferName, m__PrePointBuffer);
-        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_2, m_NowPosBufferName, m__NowPointBuffer);
+        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_2, m_NowPosBufferName, m__PredictPointBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_2, m_PostPosBufferName, m__PostPointBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_2, m_NeighborDateBufferName, m_NeighborDataBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_2, m_NeighborIndexBufferName, m_NeighborIndexBuffer);
         ConstraintCmd.DispatchCompute(ConstraintCompute, testIndex_2, DispatchNumX, DispatchNumY, DispatchNumZ);
 
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_3, m_PrePosBufferName, m__PrePointBuffer);
-        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_3, m_NowPosBufferName, m__NowPointBuffer);
+        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_3, m_NowPosBufferName, m__PredictPointBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_3, m_PostPosBufferName, m__PostPointBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_3, m_NeighborDateBufferName, m_NeighborDataBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_3, m_NeighborIndexBufferName, m_NeighborIndexBuffer);
         ConstraintCmd.DispatchCompute(ConstraintCompute, testIndex_3, DispatchNumX, DispatchNumY, DispatchNumZ);
 
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_4, m_PrePosBufferName, m__PrePointBuffer);
-        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_4, m_NowPosBufferName, m__NowPointBuffer);
+        ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_4, m_NowPosBufferName, m__PredictPointBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_4, m_PostPosBufferName, m__PostPointBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_4, m_NeighborDateBufferName, m_NeighborDataBuffer);
         ConstraintCmd.SetComputeBufferParam(ConstraintCompute, testIndex_4, m_NeighborIndexBufferName, m_NeighborIndexBuffer);
@@ -222,7 +222,7 @@ public class XPBD : MonoBehaviour
     static string m_PrePosBufferName = "_PrePoint";
     static string m_PostPosBufferName = "_PostPoint";
 
-    [Range(0.0001f,1f)]
+    [Range(0.0001f,20f)]
     [Header("柔度")]
     public float stiffness;
     [Range(0,1)]
@@ -242,7 +242,7 @@ public class XPBD : MonoBehaviour
     //基础的3Buffer (分别代表初始位置 上一次的位置)
     public ComputeBuffer m__PrePointBuffer;
     public ComputeBuffer m__PostPointBuffer;
-    public ComputeBuffer m__NowPointBuffer;
+    public ComputeBuffer m__PredictPointBuffer;
 
     public ComputeBuffer m_NeighborDataBuffer; //邻接表的CB
     public ComputeBuffer m_NeighborIndexBuffer;
@@ -265,7 +265,7 @@ public class XPBD : MonoBehaviour
     /// </summary>
     private void Initialize3Buffer()
     {
-        m__NowPointBuffer = new ComputeBuffer(MAXVERTEX,Marshal.SizeOf<Particle>());
+        m__PredictPointBuffer = new ComputeBuffer(MAXVERTEX,Marshal.SizeOf<Particle>());
         m__PrePointBuffer = new ComputeBuffer(MAXVERTEX, Marshal.SizeOf<Particle>());
         m__PostPointBuffer = new ComputeBuffer(MAXVERTEX, Marshal.SizeOf<Particle>());
 
@@ -312,7 +312,7 @@ public class XPBD : MonoBehaviour
 
         //初始化ComputeBuffer
         m__PrePointBuffer.SetData(m_PointList.ToArray());
-        m__NowPointBuffer.SetData(m_PointList.ToArray());
+        m__PredictPointBuffer.SetData(m_PointList.ToArray());
         m__PostPointBuffer.SetData(m_PointList.ToArray());
      
         InitialInteraciton();
@@ -329,17 +329,17 @@ public class XPBD : MonoBehaviour
 
         m_Constraint_Distance.InitialVertexCount(testMesh.vertices.Length);
         //初始化初始位置.
-        m_Constraint_Distance.InitialBuffer(m__NowPointBuffer, m__PrePointBuffer, m__PostPointBuffer, m_NeighborDataBuffer, m_NeighborIndexBuffer);
+        m_Constraint_Distance.InitialBuffer(m__PredictPointBuffer, m__PrePointBuffer, m__PostPointBuffer, m_NeighborDataBuffer, m_NeighborIndexBuffer);
 
-        m_Material.SetBuffer("_NowPoint",m__NowPointBuffer);
+        m_Material.SetBuffer("_NowPoint",m__PredictPointBuffer);
     }
 
-    private void FixedUpdate()
+    private void Update()
     {
         num++;
         {
             
-            m__NowPointBuffer.GetData(particles);
+            m__PredictPointBuffer.GetData(particles);
 
 
             Vector3[] temp = new Vector3[m_PointList.Count];
@@ -356,7 +356,7 @@ public class XPBD : MonoBehaviour
             testMesh.RecalculateNormals();
 
 
-            cmd.SetBufferData(m__NowPointBuffer, particles);
+            cmd.SetBufferData(m__PredictPointBuffer, particles);
          
         }
 
@@ -366,7 +366,7 @@ public class XPBD : MonoBehaviour
                 InteractionExecute();
             //这中间是约束项执行
             {
-                m_Constraint_Distance.Execute(DispatchNumX, DispatchNumY, DispatchNumZ, Time.fixedDeltaTime, stiffness, gamma, 20);
+                m_Constraint_Distance.Execute(DispatchNumX, DispatchNumY, DispatchNumZ, Time.deltaTime, stiffness, gamma, 20);
             }
             //最后速度结算执行
             CalculateExecute();
@@ -383,7 +383,7 @@ public class XPBD : MonoBehaviour
     /// </summary>
     private void InitialInteraciton()
     {
-        m_InteractionCS.SetFloat("deltaTime", Time.fixedDeltaTime / 5f);
+        m_InteractionCS.SetFloat("deltaTime", Time.deltaTime / 5f);
         m_InteractionCS.SetInt("meshVertexNums", VertexNum);
         m_InteractionCS.SetInt("_RawCount", (int)Mathf.Sqrt(VertexNum));
     }
@@ -398,7 +398,7 @@ public class XPBD : MonoBehaviour
 
         int InteractionKernelIndex = m_InteractionCS.FindKernel(m_InteractionName);
         cmd.SetComputeBufferParam(m_InteractionCS, InteractionKernelIndex, m_PrePosBufferName, m__PrePointBuffer);
-        cmd.SetComputeBufferParam(m_InteractionCS, InteractionKernelIndex, m_NowPosBufferName, m__NowPointBuffer);
+        cmd.SetComputeBufferParam(m_InteractionCS, InteractionKernelIndex, m_NowPosBufferName, m__PredictPointBuffer);
         cmd.SetComputeBufferParam(m_InteractionCS, InteractionKernelIndex, m_PostPosBufferName, m__PostPointBuffer);
         cmd.DispatchCompute(m_InteractionCS, InteractionKernelIndex, DispatchNumX, DispatchNumY, DispatchNumZ);
     }
@@ -421,7 +421,7 @@ public class XPBD : MonoBehaviour
         m_CalculateCS.SetFloat("gamma", gamma);
         int CalculateKernelIndex = m_CalculateCS.FindKernel(m_CalculateName);
         cmd.SetComputeBufferParam(m_CalculateCS, CalculateKernelIndex, m_PrePosBufferName, m__PrePointBuffer);
-        cmd.SetComputeBufferParam(m_CalculateCS, CalculateKernelIndex, m_NowPosBufferName, m__NowPointBuffer);
+        cmd.SetComputeBufferParam(m_CalculateCS, CalculateKernelIndex, m_NowPosBufferName, m__PredictPointBuffer);
         cmd.SetComputeBufferParam(m_CalculateCS, CalculateKernelIndex, m_PostPosBufferName, m__PostPointBuffer);
         cmd.DispatchCompute(m_CalculateCS, CalculateKernelIndex, DispatchNumX, DispatchNumY, DispatchNumZ);
     }

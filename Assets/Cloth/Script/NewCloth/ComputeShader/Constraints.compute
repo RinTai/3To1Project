@@ -1,3 +1,6 @@
+ï»¿#pragma enable_d3d11_debug_symbols
+
+#pragma kernel UpdateVelocityAndPos;
 #pragma kernel Constraint_Distance
 #pragma kernel Constraint_Bend
 #pragma kernel Constraint_Fixed
@@ -6,22 +9,54 @@
 
 #include "D:\unityProj\My project (1)\Assets\Cloth\Script\NewCloth\ComputeShader\DataHub.hlsl"
 
+float deltaTime;
 float alpha;
 float4 globalValue[10];
-RWStructuredBuffer<PointInfo> _PointBuffer;
-RWStructuredBuffer<DistanceConstraintInfo> _DistanceConstraint;
+RWStructuredBuffer<PointInfo> _PredictPointBuffer;
+RWStructuredBuffer<PointInfo> _PostPointBuffer;
+RWStructuredBuffer<DistanceConstraintInfo> _DistanceBuffer;
 
-[numthreads(64,1,1)]
+[numthreads(1, 1, 1)]
+void UpdateVelocityAndPos(uint3 id : SV_DispatchThreadID)
+{
+    PointInfo postPoint = _PostPointBuffer[id.x];
+    PointInfo nowPoint = _PredictPointBuffer[id.x];
+   
+    _PredictPointBuffer[id.x].velocity = (nowPoint.position - postPoint.position) / deltaTime;
+  
+    _PostPointBuffer[id.x] = nowPoint;
+    
+    //é˜»å°¼çš„å½±å“ æŒ‰ç†æ¥è¯´
+    //_PredictPointBuffer[id.x].velocity = (1 - 0.1f) * velocity;
+    
+    nowPoint.velocity += float3(0.0f, 0.0f, 0.0f) * deltaTime;
+   
+    nowPoint.position +=  nowPoint.velocity * deltaTime;
+    
+    _PredictPointBuffer[id.x] = nowPoint;
+
+    if (id.x == 0)
+    {
+        _PredictPointBuffer[0].position = float3(6.0f, 1.0f, 6.0f);
+        _PredictPointBuffer[0].mass = 0.0;
+        _PostPointBuffer[0].position = float3(6.0f, 1.0f, 6.0f);
+        _PostPointBuffer[0].mass = 0.0;
+    }
+}
+
+[numthreads(1,1,1)]
 void Constraint_Distance(uint3 id : SV_DispatchThreadID)
 {
-    //µÃµ½µ±Ç°µÄ±éÀúĞÅÏ¢
-    DistanceConstraintInfo myInfo = _DistanceConstraint[id.x];
+    //å¾—åˆ°å½“å‰çš„éå†ä¿¡æ¯
+    DistanceConstraintInfo myInfo = _DistanceBuffer[id.x];
+
+    float lambda = myInfo.lambda;
     
     int v0 = myInfo.vIndex0;
     int v1 = myInfo.vIndex1;
     
-    PointInfo p0 = _PointBuffer[v0];
-    PointInfo p1 = _PointBuffer[v1];
+    PointInfo p0 = _PostPointBuffer[v0];
+    PointInfo p1 = _PostPointBuffer[v1];
     
     float m0 = p0.mass;
     float m1 = p1.mass;
@@ -29,51 +64,60 @@ void Constraint_Distance(uint3 id : SV_DispatchThreadID)
 
     float3 pos0 = p0.position;
     float3 pos1 = p1.position;
-    
-    float3 dis = distance(pos0, pos1);
+
     float3 dir = pos1 - pos0;
+    float dis = distance(pos0, pos1);
+    
+    if (dis == 0)
+        return;
     
     //gradC = (xo-x1) / |x0-x1| 
-    float3 gradC_p0 = -dir / dis;
-    float3 gradC_p1 = dir / dis;
+    float3 gradC_p0 = dir / dis;
+    float3 gradC_p1 = -dir / dis;
     float gradC_Length = length(gradC_p0);
         
-    float3 C = dis - myInfo.restDistance;
-    float gradC_2 = pow(gradC_Length, 2);//Õâ¸öÊµ¼ÊÉÏÊÇÆ½·½
+    float C = abs(dis - myInfo.restDistance);
+    float gradC_2 = pow(gradC_Length, 2); //è¿™ä¸ªå®é™…ä¸Šæ˜¯å¹³æ–¹
     
-    // ÎÒÃÇ²ÉÓÃµÄÊÇÃ¿Ö¡¸üĞÂ n´ÎÔ¼Êø£¬Òò´ËlambdaÃ¿´Î¶¼Ó¦¸ÃÖØÖÃÎª0,Ò²¾Í¿ÉÒÔ½«d_lambdaµÈÍ¬ÓÚlambda
+    float alpha = 1;
+    // æˆ‘ä»¬é‡‡ç”¨çš„æ˜¯æ¯å¸§æ›´æ–° næ¬¡çº¦æŸï¼Œå› æ­¤lambdaæ¯æ¬¡éƒ½åº”è¯¥é‡ç½®ä¸º0,ä¹Ÿå°±å¯ä»¥å°†d_lambdaç­‰åŒäºlambda
     // d_lambda = (-C - alpha*lambda) / (gradC * w_T * gradC_T + alpha)
-    float d_lambda = (-C) / (mT * gradC_2 + alpha);
+    float d_lambda = (-C ) / (mT * gradC_2 + alpha);
    
+    _DistanceBuffer[id.x].lambda += d_lambda;
+    //_DistanceBuffer[id.x].lambda += d_lambda;
     //x = x + deltaX where deltaX = gradC * w_T(i) * lambda
-    float3 correction_x0 = d_lambda * gradC_p0;
-    float3 correction_x1 = d_lambda * gradC_p1;
-    
-    _PointBuffer[v0].position += m0 * correction_x0;
-    _PointBuffer[v1].position += m1 * correction_x1; //¶ÔÉÏÊöÇóµ¼¹ı³ÌÎ´Çø·ÖµÄĞŞÕı
+    float3 pos_0 = m0  * d_lambda * gradC_p0 ;
+    float3 pos_1 = m1  * d_lambda * gradC_p0 ;
+    _PredictPointBuffer[v0].position =p0.position + pos_0 ;
+    _PredictPointBuffer[v1].position =p1.position + pos_1 ; //å¯¹ä¸Šè¿°æ±‚å¯¼è¿‡ç¨‹æœªåŒºåˆ†çš„ä¿®æ­£
+
 }
 
-[numthreads(64, 1, 1)]
+[numthreads(1, 1, 1)]
 void Constraint_Bend(uint3 id : SV_DispatchThreadID)
 {
 
 }
 
-[numthreads(64, 1, 1)]
+[numthreads(1, 1, 1)]
 void Constraint_Fixed(uint3 id : SV_DispatchThreadID)
 {
 
 }
 
-[numthreads(64, 1, 1)]
+[numthreads(1, 1, 1)]
 void Constraint_Shear(uint3 id : SV_DispatchThreadID)
 {
 
 }
 
-[numthreads(64, 1, 1)]
+[numthreads(1, 1, 1)]
 void Constraint_Size(uint3 id : SV_DispatchThreadID)
 {
 
 }
+
+
+
 

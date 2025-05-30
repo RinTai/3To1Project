@@ -32,9 +32,11 @@ void Calculate(uint3 id : SV_DispatchThreadID)
     if (index >= meshVertexNums)
         return;
     
+    /*
+    可以合并到最开始。
     float3 velocity = (_NowPoint[index].Position - _PostPoint[index].Position) / deltaTime;
     //阻尼的影响
     //_NowPoint[index].Velocity = (1 - gamma) * velocity;
     _NowPoint[index].Velocity = velocity * (1 - gamma);
-    
+    */
 }

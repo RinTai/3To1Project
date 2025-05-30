@@ -5,6 +5,7 @@ using UnityEngine.Rendering;
 using Unity.Collections;
 using Unity.Burst.Intrinsics;
 using UnityEngine.UI;
+using TMPro.EditorUtilities;
 
 namespace ClothXPBD
 {
@@ -18,19 +19,22 @@ namespace ClothXPBD
             _BendConstraintName = "Constraint_Bend",
             _FixedConstraintName = "Constraint_Fixed",
             _ShearConstraintName = "Constraint_Shear",
-            _SizeConstraintName = "Constraint_Size";
+            _SizeConstraintName = "Constraint_Size",
+            _UpadateCallName = "UpdateVelocityAndPos";
 
         private static string
             _DistanceBufferName = "_DistanceBuffer",
             _BendBufferName = "_BendBuffer",
             _FixedBufferName = "_FixedBuffer",
             _ShearBufferName = "_ShearBuffer",
-            _SizeBufferName = "_SizeBuffer";
+            _SizeBufferName = "_SizeBuffer",
+            _NPBufferName = "_PredictPointBuffer",
+            _PPBufferName = "_PostPointBuffer";
 
         /// <summary>
         /// CS
         /// </summary>
-        private static ComputeShader _computeShader;
+        public static ComputeShader _computeShader;
 
         /// <summary>
         /// 命令列表
@@ -103,43 +107,65 @@ namespace ClothXPBD
             }
         }
 
-        public ClothSimulation(ClothMesh ClothMesh,CommandBuffer CommandBuffer)
+        public ClothSimulation(ClothMesh ClothMesh,CommandBuffer CommandBuffer,ComputeShader ComputeShader)
         {
             _mesh = ClothMesh; 
             _commandBuffer = CommandBuffer;
+            _computeShader = ComputeShader;
 
+
+            ConstraintCall<DistanceConstraintInfo>.computeShader = _computeShader;
             _distanceConstraints = new ConstraintCall<DistanceConstraintInfo>();
-            _distanceConstraints.kernelID = _computeShader.FindKernel(_DistanceConstraintName);
-            _distanceConstraints.bufferName = _DistanceBufferName;
-           
+            _distanceConstraints.baseKernelID = _computeShader.FindKernel(_DistanceConstraintName);
+            _distanceConstraints.baseBufferName = _DistanceBufferName;
 
+
+            ConstraintCall<BendConstraintInfo>.computeShader = _computeShader;
             _bendConstraints = new ConstraintCall<BendConstraintInfo>();
-            _bendConstraints.kernelID = _computeShader.FindKernel(_BendConstraintName);
-            _bendConstraints.bufferName = _BendBufferName;
+            _bendConstraints.baseKernelID = _computeShader.FindKernel(_BendConstraintName);
+            _bendConstraints.baseBufferName = _BendBufferName;
 
 
+            ConstraintCall<ShearConstraintInfo>.computeShader = _computeShader;
             _shearConstraints = new ConstraintCall<ShearConstraintInfo>();
-            _shearConstraints.kernelID = _computeShader.FindKernel(_ShearConstraintName);
-            _shearConstraints.bufferName = _ShearBufferName;
+            _shearConstraints.baseKernelID = _computeShader.FindKernel(_ShearConstraintName);
+            _shearConstraints.baseBufferName = _ShearBufferName;
 
 
+            ConstraintCall<FixedConstraintInfo>.computeShader = _computeShader;
             _fixedConstraints = new ConstraintCall<FixedConstraintInfo>();
-            _fixedConstraints.kernelID = _computeShader.FindKernel(_FixedConstraintName);
-            _fixedConstraints.bufferName = _FixedBufferName;
+            _fixedConstraints.baseKernelID = _computeShader.FindKernel(_FixedConstraintName);
+            _fixedConstraints.baseBufferName = _FixedBufferName;
 
 
+            ConstraintCall<SizeConstraintInfo>.computeShader = _computeShader;
             _sizeConstraints = new ConstraintCall<SizeConstraintInfo>();
-            _sizeConstraints.kernelID = _computeShader.FindKernel(_SizeConstraintName);
-            _sizeConstraints.bufferName = _SizeBufferName;
+            _sizeConstraints.baseKernelID = _computeShader.FindKernel(_SizeConstraintName);
+            _sizeConstraints.baseBufferName = _SizeBufferName;
+
+
+            UpdateVelocityAndPositionCall.computeShader = _computeShader;
+            _updateCall = new UpdateVelocityAndPositionCall();
+            _updateCall.baseKernelID = _computeShader.FindKernel(_UpadateCallName);
+            _updateCall.bufferName_Now = _NPBufferName;
+            _updateCall.bufferName_Post = _PPBufferName;
+
 
             this.BuildMasses();
             this.BuildDistanceConstraint();
-            this.BuildBendConstraint();
-            this.BuildShearConstraint();
-            this.BuildSizeConstraint();
+            //this.BuildBendConstraint();
+            //this.BuildShearConstraint();
+            //this.BuildSizeConstraint();
 
             ///统计所有顶点
             this.BuildPointStruct();
+
+            _distanceConstraints.InitialBuffer();
+            _updateCall.InitialBuffer();
+            //_sizeConstraints.InitialBuffer();
+            //_bendConstraints.InitialBuffer();
+            //_shearConstraints.InitialBuffer();
+            //_fixedConstraints.InitialBuffer();
         }
         /// <summary>
         /// 内存释放
@@ -155,10 +181,20 @@ namespace ClothXPBD
             _distanceConstraints.Dispose();
         }
 
-        public void Step(CommandBuffer commandBuffer)
+        public void Step(CommandBuffer commandBuffer,GraphicsFence fence)
         {
-            _distanceConstraints.ComputeCall(commandBuffer);
-            _bendConstraints.ComputeCall(commandBuffer);
+            _commandBuffer.WaitOnAsyncGraphicsFence(fence);
+            _updateCall.InitialBuffer();
+            _distanceConstraints.InitialBuffer();
+            for(int i = 0; i < 5; i++) 
+            {
+                _computeShader.SetFloat("deltaTime", Time.deltaTime);
+                _updateCall.ComputeCall(commandBuffer);
+                _commandBuffer.WaitOnAsyncGraphicsFence(fence);
+                _updateCall.SetBuffer(commandBuffer, _distanceConstraints);
+                _distanceConstraints.ComputeCall(commandBuffer);
+                _commandBuffer.WaitOnAsyncGraphicsFence(fence);
+            }
         }
 
         /// <summary>
@@ -182,19 +218,28 @@ namespace ClothXPBD
                 var area = CustomMath.GetArea(v0, v1, v2);
                 var m = area;
                 var m3 = m / 3;
-                _masses[i0] += m3;
-                _masses[i1] += m3;
-                _masses[i2] += m3;
+                _masses[i0] = 0.1f;
+                _masses[i1] = 0.1f;
+                _masses[i2] = 0.1f;
+              
             }
+            _masses[0] = 0;
         }
 
         public void BuildDistanceConstraint()
         {
             var edges = _mesh.GetEdgeList();
             _distanceConstraints.constraints = new NativeList<DistanceConstraintInfo>(edges.Count, Allocator.Persistent);
+            int i = 0;
             foreach (var e in edges)
             {
+                i++;
                 this.AddDistanceConstraint(e.vIndex0, e.vIndex1);
+
+                if(e.vIndex0 == 1 || e.vIndex1 == 1)
+                {
+                    Debug.Log(i - 1);
+                }
             }
         }
 
@@ -202,12 +247,13 @@ namespace ClothXPBD
         public void AddDistanceConstraint(int index0,int index1)
         {
             var restDistance = math.distance(positions[index0], positions[index1]);
-
+            
             _distanceConstraints.AddConstraint(new DistanceConstraintInfo()
             {
                 vIndex0 = index0,
                 vIndex1 = index1,
-                restDistance = restDistance
+                restDistance = restDistance,
+                lambda = 0.0f,
             });
 
         }
@@ -227,6 +273,7 @@ namespace ClothXPBD
                     bendConstraint.vIndex1 = edge.vIndex1;
                     bendConstraint.vIndex2 = v2;
                     bendConstraint.vIndex3 = v3;
+                    bendConstraint.lambda = 0.0f;
 
                     var p0 = this.positions[bendConstraint.vIndex0];
                     var p1 = this.positions[bendConstraint.vIndex1] - p0;
@@ -263,6 +310,7 @@ namespace ClothXPBD
                     sizeConstraint.vIndex0 = v0;
                     sizeConstraint.vIndex1 = v1;
                     sizeConstraint.vIndex2 = v2;
+                    sizeConstraint.lambda = 0.0f;
 
                     _sizeConstraints.AddConstraint(sizeConstraint);
                 }
@@ -284,7 +332,8 @@ namespace ClothXPBD
             var vertex = _mesh.vertices;
             var masses = _masses;
 
-            for (int i = 0; i < 0; i++) 
+            _updateCall.points = new NativeList<PointInfo>(vertexCount, Allocator.Persistent);
+            for (int i = 0; i < vertexCount; i++) 
             {
                 var point = new PointInfo();
                 point.mass = masses[i];
@@ -292,6 +341,11 @@ namespace ClothXPBD
                 point.velocity = 0.0f;
                 _updateCall.AddPoint(point);
             }
+        }
+
+        public ComputeBuffer GetSimulationResult()
+        {
+            return _updateCall.pointBuffer_Post;
         }
     }
 }

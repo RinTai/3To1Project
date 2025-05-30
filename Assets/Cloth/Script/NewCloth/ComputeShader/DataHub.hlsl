@@ -11,6 +11,7 @@ struct PointInfo
     float3 position;
         
     float3 velocity;
+    
 };
 
     /// <summary>
@@ -23,6 +24,8 @@ struct DistanceConstraintInfo
     int vIndex1;
         
     float restDistance;
+    
+    float lambda;
 };
 
     
@@ -49,12 +52,16 @@ struct SizeConstraintInfo
     int vIndex2;
         
     float rest; //初始面积
+    
+    float lambda;
 };
 
     
 struct FixedConstraintInfo
 {
     float3 fixedPosition;
+    
+    float lambda;
 };
 
     
@@ -67,6 +74,8 @@ struct ShearConstraintInfo
     int vIndex2;
         
     float rest; //初始角度
+    
+    float lambda;
 };
 
 #endif
