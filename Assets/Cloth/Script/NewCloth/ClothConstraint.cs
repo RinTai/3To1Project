@@ -23,7 +23,7 @@ namespace ClothXPBD
     /// </summary>
     public interface IComputeBufferStore
     {
-        public abstract void SetBuffer(CommandBuffer commandBuffer, ComputeShader computeShader, string kernelName);
+        public abstract void SetBufferParam(CommandBuffer commandBuffer, ComputeShader computeShader, string kernelName);
     }
 
     /// <summary>
@@ -34,6 +34,7 @@ namespace ClothXPBD
         public float mass;
         public float3 position;
         public float3 velocity;
+        private float padding;
     }
 
     /// <summary>
@@ -134,10 +135,11 @@ namespace ClothXPBD
         /// <summary>
         /// 初始化Buffer 至少要在Call之前调用
         /// </summary>
-        public void InitialBuffer()
+        public void InitialBuffer(CommandBuffer commandBuffer)
         {
             baseConstraintBuffer = new ComputeBuffer(constraints.Length,UnsafeUtility.SizeOf<T>());
-            baseConstraintBuffer.SetData(constraints.ToArray(Allocator.Temp));
+            //baseConstraintBuffer.SetData(constraints.ToArray(Allocator.Temp));
+            commandBuffer.SetBufferData(baseConstraintBuffer, constraints.ToArray(Allocator.Temp));
         }
 
         /// <summary>
@@ -146,7 +148,7 @@ namespace ClothXPBD
         /// <param name="commandBuffer"></param>
         public void ComputeCall(CommandBuffer commandBuffer)
         {
-            int3 DispatchArgs = new int3(constraints.Length , 1, 1);
+            int3 DispatchArgs = new int3(constraints.Length, 1, 1);
             commandBuffer.SetComputeBufferParam(computeShader, baseKernelID, baseBufferName, baseConstraintBuffer);
             commandBuffer.DispatchCompute(computeShader, baseKernelID, DispatchArgs.x, DispatchArgs.y, DispatchArgs.z);
         }
@@ -178,6 +180,8 @@ namespace ClothXPBD
 
         public int baseKernelID;
 
+        public int estimateKernelID;
+
         public string bufferName_Now; //当前顶点位置对应的名字
         public string bufferName_Post;//上一布顶点位置对应的名字
 
@@ -189,21 +193,32 @@ namespace ClothXPBD
         /// </summary>
         public NativeList<PointInfo> points;
 
-        public void InitialBuffer()
+        public void InitialBuffer(CommandBuffer commandBuffer)
         {
             pointBuffer_Now = new ComputeBuffer(points.Length,UnsafeUtility.SizeOf<PointInfo>());
-            pointBuffer_Now.SetData(points.ToArray(Allocator.Temp));
+            //pointBuffer_Now.SetData(points.ToArray(Allocator.Temp));
+            commandBuffer.SetBufferData(pointBuffer_Now, points.ToArray(Allocator.Temp));
+            
 
             pointBuffer_Post = new ComputeBuffer(points.Length, UnsafeUtility.SizeOf<PointInfo>());
-            pointBuffer_Post.SetData(points.ToArray(Allocator.Temp));
+            //pointBuffer_Post.SetData(points.ToArray(Allocator.Temp));
+            commandBuffer.SetBufferData(pointBuffer_Post, points.ToArray(Allocator.Temp));
         }
 
         public void ComputeCall(CommandBuffer commandBuffer)
         {
-            int3 DispatchArgs = new int3(points.Length, 1, 1);
+            int3 DispatchArgs = new int3(points.Length , 1, 1);
             commandBuffer.SetComputeBufferParam(computeShader, baseKernelID, bufferName_Now, pointBuffer_Now);
             commandBuffer.SetComputeBufferParam(computeShader, baseKernelID, bufferName_Post, pointBuffer_Post);
             commandBuffer.DispatchCompute(computeShader, baseKernelID, DispatchArgs.x, DispatchArgs.y, DispatchArgs.z);
+        }
+
+        public void EsitimateCall(CommandBuffer commandBuffer)
+        {
+            int3 DispatchArgs = new int3(points.Length , 1, 1);
+            commandBuffer.SetComputeBufferParam(computeShader, estimateKernelID, bufferName_Now, pointBuffer_Now);
+            commandBuffer.SetComputeBufferParam(computeShader, estimateKernelID, bufferName_Post, pointBuffer_Post);
+            commandBuffer.DispatchCompute(computeShader, estimateKernelID, DispatchArgs.x, DispatchArgs.y, DispatchArgs.z);
         }
 
         /// <summary>
@@ -212,7 +227,7 @@ namespace ClothXPBD
         /// <param name="commandBuffer"></param>
         /// <param name="computeShader"></param>
         /// <param name="kernelName"></param>
-        public void SetBuffer(CommandBuffer commandBuffer , ComputeShader computeShader ,string kernelName)
+        public void SetBufferParam(CommandBuffer commandBuffer , ComputeShader computeShader ,string kernelName)
         {
             int kernelID = computeShader.FindKernel(kernelName);
             commandBuffer.SetComputeBufferParam(computeShader, kernelID, bufferName_Now, pointBuffer_Now);
@@ -225,7 +240,7 @@ namespace ClothXPBD
         /// <typeparam name="T"></typeparam>
         /// <param name="commandBuffer"></param>
         /// <param name="constraintCall"></param>
-        public void SetBuffer<T>(CommandBuffer commandBuffer, ConstraintCall<T> constraintCall) where T : unmanaged
+        public void SetBufferParam<T>(CommandBuffer commandBuffer, ConstraintCall<T> constraintCall) where T : unmanaged
         {
             commandBuffer.SetComputeBufferParam(ConstraintCall<T>.computeShader, constraintCall.baseKernelID, bufferName_Now, pointBuffer_Now);
             commandBuffer.SetComputeBufferParam(ConstraintCall<T>.computeShader, constraintCall.baseKernelID, bufferName_Post, pointBuffer_Post);

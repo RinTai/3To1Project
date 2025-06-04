@@ -12,6 +12,7 @@ struct PointInfo
         
     float3 velocity;
     
+    float padding;
 };
 
     /// <summary>

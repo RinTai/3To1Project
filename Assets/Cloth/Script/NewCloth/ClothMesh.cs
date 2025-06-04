@@ -93,7 +93,7 @@ public class ClothMesh
     /// <summary>
     /// 边缘的表(这里还需要存一个这条边对应的三角形。怎么存放呢：换成List存放了)
     /// </summary>
-    private List<Edge> _edgeList;
+    private Dictionary<int,Edge> _edgeDict;
 
     public int _vertexCount;
     private NativeList<float3> _vertices;
@@ -162,7 +162,7 @@ public class ClothMesh
         this._Testmesh = meshFilter.mesh;
 
         _neighborSet = new NeighborSet<int, int>();
-        _edgeList = new List<Edge>();
+        _edgeDict = new Dictionary<int, Edge>();
         _vertexCount = vertices.Length;
 
         SetPointFormTriangle(meshFilter.mesh);
@@ -191,16 +191,32 @@ public class ClothMesh
             _neighborSet.UniqueAdd(tri.z, x);
             _neighborSet.UniqueAdd(tri.z, y);
 
-            var xy = new Edge(x, y);
-            xy.triangleIndexes.Add(z);
-            var yz = new Edge(y, z);
-            yz.triangleIndexes.Add(x);
-            var zx = new Edge(z, x);
-            zx.triangleIndexes.Add(y);
 
-            _edgeList.Add(xy);
-            _edgeList.Add(yz);
-            _edgeList.Add(zx);
+            int xyHash = Edge.GetEdgeHash(x, y);
+            if (!_edgeDict.TryGetValue(xyHash,out Edge xyEdge))
+            {
+                xyEdge = new Edge(x, y);
+                _edgeDict.Add(xyHash, xyEdge); // 新边才添加到全局列表
+            }
+            xyEdge.triangleIndexes.Add(z); // 无论新旧边，都添加当前三角形的第三个顶点
+
+            // 处理边 yz
+            int yzHash = Edge.GetEdgeHash(y, z);
+            if (!_edgeDict.TryGetValue(yzHash, out Edge yzEdge))
+            {
+                yzEdge = new Edge(y, z);
+                _edgeDict.Add(yzHash,yzEdge);
+            }
+            yzEdge.triangleIndexes.Add(x);
+
+            // 处理边 zx
+            int zxHash = Edge.GetEdgeHash(z, x);
+            if (!_edgeDict.TryGetValue(zxHash, out Edge zxEdge))
+            {
+                zxEdge = new Edge(z, x);
+                _edgeDict.Add(zxHash, zxEdge);   
+            }
+            zxEdge.triangleIndexes.Add(y);
         }
     }
 
@@ -226,9 +242,32 @@ public class ClothMesh
             _neighborSet.UniqueAdd(tri.z, x);
             _neighborSet.UniqueAdd(tri.z, y);
 
-            _edgeList.Add(new Edge(x, y));
-            _edgeList.Add(new Edge(y, z));
-            _edgeList.Add(new Edge(z, x));
+
+            int xyHash = Edge.GetEdgeHash(x, y);
+            if (!_edgeDict.TryGetValue(xyHash, out Edge xyEdge))
+            {
+                xyEdge = new Edge(x, y);
+                _edgeDict.Add(xyHash, xyEdge); // 新边才添加到全局列表
+            }
+            xyEdge.triangleIndexes.Add(z); // 无论新旧边，都添加当前三角形的第三个顶点
+
+            // 处理边 yz
+            int yzHash = Edge.GetEdgeHash(y, z);
+            if (!_edgeDict.TryGetValue(yzHash, out Edge yzEdge))
+            {
+                yzEdge = new Edge(y, z);
+                _edgeDict.Add(yzHash, yzEdge);
+            }
+            yzEdge.triangleIndexes.Add(x);
+
+            // 处理边 zx
+            int zxHash = Edge.GetEdgeHash(z, x);
+            if (!_edgeDict.TryGetValue(zxHash, out Edge zxEdge))
+            {
+                zxEdge = new Edge(z, x);
+                _edgeDict.Add(zxHash, zxEdge);
+            }
+            zxEdge.triangleIndexes.Add(y);
         }
     }
 
@@ -266,9 +305,9 @@ public class ClothMesh
         return new ClothMesh(verticesList, uvList, indicesList, normals, meshFilter);
     }
 
-    public List<Edge> GetEdgeList()
+    public Dictionary<int, Edge> GetEdgeList()
     {
-        return _edgeList;
+        return _edgeDict;
     }
 
     public NeighborSet<int, int> GetNeighborSet()

@@ -1,4 +1,7 @@
 using ClothXPBD;
+using Unity.Collections;
+using UnityEditor;
+using UnityEditorInternal;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.UI;
@@ -26,18 +29,31 @@ public class ClothApply : MonoBehaviour
 
     public void Update()
     {
-        _commandBuffer.Clear();
-        GraphicsFence fence = _commandBuffer.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation,SynchronisationStageFlags.ComputeProcessing);
 
-        _clothSimulation.Step(_commandBuffer,fence);
+        GraphicsFence fence = _commandBuffer.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, SynchronisationStageFlags.ComputeProcessing);
 
-
+        _clothSimulation.Step(_commandBuffer, fence);
 
         Graphics.ExecuteCommandBuffer(_commandBuffer);
+        _commandBuffer.Clear();
 
+        AsyncGPUReadback.Request(_clothSimulation.GetSimulationResult(), request => {
+            if (request.hasError) return;
+            NativeArray<PointInfo> particles = request.GetData<PointInfo>();
+            // 处理数据...
+            Vector3[] temp = new Vector3[_clothSimulation.vertexCount];
+
+            for (int i = 0; i < _clothSimulation.vertexCount; i++)
+            {
+                temp[i] = particles[i].position;
+            }
+            _mesh.vertices = temp;
+        });
+
+        /*
         PointInfo[] particles = new PointInfo[_clothSimulation.vertexCount];
         _clothSimulation.GetSimulationResult().GetData(particles);
-
+        
         Vector3[] temp = new Vector3[_clothSimulation.vertexCount];
 
         for (int i = 0; i < _clothSimulation.vertexCount; i++)
@@ -45,5 +61,6 @@ public class ClothApply : MonoBehaviour
             temp[i] = particles[i].position;
         }
         _mesh.vertices = temp;
+        */
     }
 }

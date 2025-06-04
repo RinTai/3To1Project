@@ -6,6 +6,7 @@ using Unity.Collections;
 using Unity.Burst.Intrinsics;
 using UnityEngine.UI;
 using TMPro.EditorUtilities;
+using Unity.VisualScripting;
 
 namespace ClothXPBD
 {
@@ -20,7 +21,8 @@ namespace ClothXPBD
             _FixedConstraintName = "Constraint_Fixed",
             _ShearConstraintName = "Constraint_Shear",
             _SizeConstraintName = "Constraint_Size",
-            _UpadateCallName = "UpdateVelocityAndPos";
+            _UpadateCallName = "UpdateVelocityAndPos",
+            _EstimateCallName = "EstimatePos";
 
         private static string
             _DistanceBufferName = "_DistanceBuffer",
@@ -75,6 +77,7 @@ namespace ClothXPBD
         /// 计算更新总点的速度和位置。
         /// </summary>
         private UpdateVelocityAndPositionCall _updateCall;
+
 
         private ClothMesh _mesh;
         public int vertexCount
@@ -147,6 +150,7 @@ namespace ClothXPBD
             UpdateVelocityAndPositionCall.computeShader = _computeShader;
             _updateCall = new UpdateVelocityAndPositionCall();
             _updateCall.baseKernelID = _computeShader.FindKernel(_UpadateCallName);
+            _updateCall.estimateKernelID = _computeShader.FindKernel(_EstimateCallName);
             _updateCall.bufferName_Now = _NPBufferName;
             _updateCall.bufferName_Post = _PPBufferName;
 
@@ -160,12 +164,14 @@ namespace ClothXPBD
             ///统计所有顶点
             this.BuildPointStruct();
 
-            _distanceConstraints.InitialBuffer();
-            _updateCall.InitialBuffer();
+            _distanceConstraints.InitialBuffer(_commandBuffer);
+            _updateCall.InitialBuffer(_commandBuffer);
             //_sizeConstraints.InitialBuffer();
             //_bendConstraints.InitialBuffer();
             //_shearConstraints.InitialBuffer();
             //_fixedConstraints.InitialBuffer();
+
+            _computeShader.SetFloat("deltaTime", Time.deltaTime);
         }
         /// <summary>
         /// 内存释放
@@ -181,19 +187,13 @@ namespace ClothXPBD
             _distanceConstraints.Dispose();
         }
 
-        public void Step(CommandBuffer commandBuffer,GraphicsFence fence)
+        public void Step(CommandBuffer commandBuffer, GraphicsFence fence)
         {
-            _commandBuffer.WaitOnAsyncGraphicsFence(fence);
-            _updateCall.InitialBuffer();
-            _distanceConstraints.InitialBuffer();
-            for(int i = 0; i < 5; i++) 
             {
-                _computeShader.SetFloat("deltaTime", Time.deltaTime);
-                _updateCall.ComputeCall(commandBuffer);
-                _commandBuffer.WaitOnAsyncGraphicsFence(fence);
-                _updateCall.SetBuffer(commandBuffer, _distanceConstraints);
+                _updateCall.EsitimateCall(commandBuffer);
+                _updateCall.SetBufferParam(commandBuffer, _distanceConstraints);
                 _distanceConstraints.ComputeCall(commandBuffer);
-                _commandBuffer.WaitOnAsyncGraphicsFence(fence);
+                _updateCall.ComputeCall(commandBuffer);
             }
         }
 
@@ -218,12 +218,13 @@ namespace ClothXPBD
                 var area = CustomMath.GetArea(v0, v1, v2);
                 var m = area;
                 var m3 = m / 3;
-                _masses[i0] = 0.1f;
-                _masses[i1] = 0.1f;
-                _masses[i2] = 0.1f;
-              
+                _masses[i0] = 1.0f;
+                _masses[i1] = 1.0f;
+                _masses[i2] = 1.0f;
+
             }
             _masses[0] = 0;
+            _masses[120] = 0;
         }
 
         public void BuildDistanceConstraint()
@@ -231,16 +232,13 @@ namespace ClothXPBD
             var edges = _mesh.GetEdgeList();
             _distanceConstraints.constraints = new NativeList<DistanceConstraintInfo>(edges.Count, Allocator.Persistent);
             int i = 0;
-            foreach (var e in edges)
+            foreach (var kvp in edges)
             {
                 i++;
-                this.AddDistanceConstraint(e.vIndex0, e.vIndex1);
-
-                if(e.vIndex0 == 1 || e.vIndex1 == 1)
-                {
-                    Debug.Log(i - 1);
-                }
+                this.AddDistanceConstraint(kvp.Value.vIndex0, kvp.Value.vIndex1);
             }
+
+
         }
 
 
@@ -261,16 +259,16 @@ namespace ClothXPBD
         {
             var edges = _mesh.GetEdgeList();
             _bendConstraints.constraints = new NativeList<BendConstraintInfo>(edges.Count, Allocator.Persistent);
-            foreach (var edge in edges)
+            foreach (var kvp in edges)
             {
-                if (edge.triangleIndexes.Count == 2)
+                if (kvp.Value.triangleIndexes.Count == 2)
                 {
-                    var v2 = edge.triangleIndexes[0]; //当前边构成三角形的另一个点。
-                    var v3 = edge.triangleIndexes[1];
+                    var v2 = kvp.Value.triangleIndexes[0]; //当前边构成三角形的另一个点。
+                    var v3 = kvp.Value.triangleIndexes[1];
 
                     var bendConstraint = new BendConstraintInfo();
-                    bendConstraint.vIndex0 = edge.vIndex0;
-                    bendConstraint.vIndex1 = edge.vIndex1;
+                    bendConstraint.vIndex0 = kvp.Value.vIndex0;
+                    bendConstraint.vIndex1 = kvp.Value.vIndex1;
                     bendConstraint.vIndex2 = v2;
                     bendConstraint.vIndex3 = v3;
                     bendConstraint.lambda = 0.0f;
@@ -294,14 +292,14 @@ namespace ClothXPBD
         {
             var edges = _mesh.GetEdgeList();
             _sizeConstraints.constraints = new NativeList<SizeConstraintInfo>(edges.Count, Allocator.Persistent);
-            foreach (var edge in edges)
+            foreach (var kvp in edges)
             {
-                var v0 = edge.vIndex0;
-                var v1 = edge.vIndex1;
+                var v0 = kvp.Value.vIndex0;
+                var v1 = kvp.Value.vIndex1;
 
                 var p0 = positions[v0];
                 var p1 = positions[v1] - p0;
-                foreach (var v2 in edge.triangleIndexes)
+                foreach (var v2 in kvp.Value.triangleIndexes)
                 {
                     var sizeConstraint = new SizeConstraintInfo();
                     var p2 = positions[v2] - p0;
@@ -337,7 +335,7 @@ namespace ClothXPBD
             {
                 var point = new PointInfo();
                 point.mass = masses[i];
-                point.position = vertex[i];
+                point.position = new float3(vertex[i].x,0,vertex[i].z);
                 point.velocity = 0.0f;
                 _updateCall.AddPoint(point);
             }

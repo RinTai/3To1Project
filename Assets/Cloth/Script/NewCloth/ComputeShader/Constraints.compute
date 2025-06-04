@@ -1,6 +1,7 @@
 ﻿#pragma enable_d3d11_debug_symbols
 
 #pragma kernel UpdateVelocityAndPos;
+#pragma kernel EstimatePos;
 #pragma kernel Constraint_Distance
 #pragma kernel Constraint_Bend
 #pragma kernel Constraint_Fixed
@@ -15,32 +16,56 @@ float4 globalValue[10];
 RWStructuredBuffer<PointInfo> _PredictPointBuffer;
 RWStructuredBuffer<PointInfo> _PostPointBuffer;
 RWStructuredBuffer<DistanceConstraintInfo> _DistanceBuffer;
+RWStructuredBuffer<BendConstraintInfo> _BendBuffer;
 
 [numthreads(1, 1, 1)]
 void UpdateVelocityAndPos(uint3 id : SV_DispatchThreadID)
 {
+    /*
+    float dt = deltaTime / 10;
     PointInfo postPoint = _PostPointBuffer[id.x];
     PointInfo nowPoint = _PredictPointBuffer[id.x];
    
-    _PredictPointBuffer[id.x].velocity = (nowPoint.position - postPoint.position) / deltaTime;
-  
-    _PostPointBuffer[id.x] = nowPoint;
-    
+    _PredictPointBuffer[id.x].velocity = (nowPoint.position - postPoint.position) / dt;
     //阻尼的影响 按理来说
     //_PredictPointBuffer[id.x].velocity = (1 - 0.1f) * velocity;
     
-    nowPoint.velocity += float3(0.0f, 0.0f, 0.0f) * deltaTime;
+    _PredictPointBuffer[id.x].velocity += float3(0.0f, -9.0f, 0.0f) * dt;
    
-    nowPoint.position +=  nowPoint.velocity * deltaTime;
-    
-    _PredictPointBuffer[id.x] = nowPoint;
+    _PredictPointBuffer[id.x].position = postPoint.position + _PostPointBuffer[id.x].velocity * dt;
 
-    if (id.x == 0)
+    _PostPointBuffer[id.x] = _PredictPointBuffer[id.x];
+
     {
-        _PredictPointBuffer[0].position = float3(6.0f, 1.0f, 6.0f);
+        _PredictPointBuffer[0].position = float3(5.0f, 2.0f, 5.0f);
         _PredictPointBuffer[0].mass = 0.0;
-        _PostPointBuffer[0].position = float3(6.0f, 1.0f, 6.0f);
-        _PostPointBuffer[0].mass = 0.0;
+        _PostPointBuffer[0].position = float3(5.0f, 2.0f, 5.0f);
+        _PostPointBuffer[0].mass = 0.0;        
+    }
+    */
+    float3 v1 = (_PredictPointBuffer[id.x].position - _PostPointBuffer[id.x].position) / deltaTime;
+    _PredictPointBuffer[id.x].velocity = v1;
+    
+    _PostPointBuffer[id.x].position = _PredictPointBuffer[id.x].position;
+    _PostPointBuffer[id.x].velocity = _PredictPointBuffer[id.x].velocity;
+}
+
+[numthreads(1,1,1)]
+void EstimatePos(uint3 id: SV_DispatchThreadID)
+{
+    float3 v0 = _PostPointBuffer[id.x].velocity;
+    float m = _PostPointBuffer[id.x].mass;
+    float3 pos = _PostPointBuffer[id.x].position;
+    
+    if(m > 0)
+    {
+        float3 v1 = v0 + float3(0.0f, -0.001f, 0.0f) * deltaTime ;
+        float3 pos1 = pos + v1 * deltaTime;
+        _PredictPointBuffer[id.x].position = pos1;
+    }
+    else
+    {
+        _PredictPointBuffer[id.x].position = pos;
     }
 }
 
@@ -68,29 +93,27 @@ void Constraint_Distance(uint3 id : SV_DispatchThreadID)
     float3 dir = pos1 - pos0;
     float dis = distance(pos0, pos1);
     
-    if (dis == 0)
-        return;
-    
     //gradC = (xo-x1) / |x0-x1| 
-    float3 gradC_p0 = dir / dis;
-    float3 gradC_p1 = -dir / dis;
+    float3 gradC_p0 = -dir / dis;
+    float3 gradC_p1 = dir / dis;
     float gradC_Length = length(gradC_p0);
         
-    float C = abs(dis - myInfo.restDistance);
+    float C = (dis - myInfo.restDistance);
     float gradC_2 = pow(gradC_Length, 2); //这个实际上是平方
     
-    float alpha = 1;
+    float alpha = 200; /// (deltaTime * deltaTime * 10 * 10);
     // 我们采用的是每帧更新 n次约束，因此lambda每次都应该重置为0,也就可以将d_lambda等同于lambda
     // d_lambda = (-C - alpha*lambda) / (gradC * w_T * gradC_T + alpha)
-    float d_lambda = (-C ) / (mT * gradC_2 + alpha);
+    float d_lambda = (-C - alpha * lambda) / (mT * gradC_2 + alpha);
    
     _DistanceBuffer[id.x].lambda += d_lambda;
+    _DistanceBuffer[id.x].lambda *= 0.9;
     //_DistanceBuffer[id.x].lambda += d_lambda;
     //x = x + deltaX where deltaX = gradC * w_T(i) * lambda
-    float3 pos_0 = m0  * d_lambda * gradC_p0 ;
-    float3 pos_1 = m1  * d_lambda * gradC_p0 ;
-    _PredictPointBuffer[v0].position =p0.position + pos_0 ;
-    _PredictPointBuffer[v1].position =p1.position + pos_1 ; //对上述求导过程未区分的修正
+    float3 pos_0 = m0   * d_lambda * gradC_p0 ;
+    float3 pos_1 = m1  * d_lambda * gradC_p1 ;
+    _PredictPointBuffer[v0].position += pos_0;
+    _PredictPointBuffer[v1].position += pos_1; //对上述求导过程未区分的修正
 
 }
 
@@ -117,6 +140,8 @@ void Constraint_Size(uint3 id : SV_DispatchThreadID)
 {
 
 }
+
+
 
 
 
