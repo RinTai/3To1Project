@@ -41,6 +41,8 @@ struct BendConstraintInfo
     int vIndex3;
         
     float rest; // 两个面的angle
+    
+    float lambda;
 };
 
     

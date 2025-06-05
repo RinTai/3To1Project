@@ -157,17 +157,17 @@ namespace ClothXPBD
 
             this.BuildMasses();
             this.BuildDistanceConstraint();
-            //this.BuildBendConstraint();
+            this.BuildBendConstraint();
             //this.BuildShearConstraint();
             //this.BuildSizeConstraint();
 
             ///统计所有顶点
             this.BuildPointStruct();
 
-            _distanceConstraints.InitialBuffer(_commandBuffer);
             _updateCall.InitialBuffer(_commandBuffer);
+            _distanceConstraints.InitialBuffer(_commandBuffer);
+            _bendConstraints.InitialBuffer(_commandBuffer);
             //_sizeConstraints.InitialBuffer();
-            //_bendConstraints.InitialBuffer();
             //_shearConstraints.InitialBuffer();
             //_fixedConstraints.InitialBuffer();
 
@@ -193,6 +193,9 @@ namespace ClothXPBD
                 _updateCall.EsitimateCall(commandBuffer);
                 _updateCall.SetBufferParam(commandBuffer, _distanceConstraints);
                 _distanceConstraints.ComputeCall(commandBuffer);
+                _updateCall.SetBufferParam(commandBuffer, _bendConstraints);
+                //bend还有bug 要修
+                _bendConstraints.ComputeCall(_commandBuffer);
                 _updateCall.ComputeCall(commandBuffer);
             }
         }
@@ -218,13 +221,12 @@ namespace ClothXPBD
                 var area = CustomMath.GetArea(v0, v1, v2);
                 var m = area;
                 var m3 = m / 3;
-                _masses[i0] = 1.0f;
-                _masses[i1] = 1.0f;
-                _masses[i2] = 1.0f;
+                _masses[i0] = 0.1f;
+                _masses[i1] = 0.1f;
+                _masses[i2] = 0.1f;
 
             }
             _masses[0] = 0;
-            _masses[120] = 0;
         }
 
         public void BuildDistanceConstraint()
@@ -335,7 +337,7 @@ namespace ClothXPBD
             {
                 var point = new PointInfo();
                 point.mass = masses[i];
-                point.position = new float3(vertex[i].x,0,vertex[i].z);
+                point.position = vertex[i];
                 point.velocity = 0.0f;
                 _updateCall.AddPoint(point);
             }

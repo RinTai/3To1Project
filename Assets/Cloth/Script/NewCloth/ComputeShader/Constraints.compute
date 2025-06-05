@@ -21,8 +21,8 @@ RWStructuredBuffer<BendConstraintInfo> _BendBuffer;
 [numthreads(1, 1, 1)]
 void UpdateVelocityAndPos(uint3 id : SV_DispatchThreadID)
 {
-    /*
-    float dt = deltaTime / 10;
+   /*
+    float dt = deltaTime;
     PointInfo postPoint = _PostPointBuffer[id.x];
     PointInfo nowPoint = _PredictPointBuffer[id.x];
    
@@ -32,22 +32,21 @@ void UpdateVelocityAndPos(uint3 id : SV_DispatchThreadID)
     
     _PredictPointBuffer[id.x].velocity += float3(0.0f, -9.0f, 0.0f) * dt;
    
-    _PredictPointBuffer[id.x].position = postPoint.position + _PostPointBuffer[id.x].velocity * dt;
+    _PredictPointBuffer[id.x].position = postPoint.position + _PredictPointBuffer[id.x].velocity * dt;
 
     _PostPointBuffer[id.x] = _PredictPointBuffer[id.x];
 
     {
-        _PredictPointBuffer[0].position = float3(5.0f, 2.0f, 5.0f);
+        _PredictPointBuffer[0].position = float3(5.0f, 5.0f, 5.0f);
         _PredictPointBuffer[0].mass = 0.0;
-        _PostPointBuffer[0].position = float3(5.0f, 2.0f, 5.0f);
+        _PostPointBuffer[0].position = float3(5.0f, 5.0f, 5.0f);
         _PostPointBuffer[0].mass = 0.0;        
     }
     */
     float3 v1 = (_PredictPointBuffer[id.x].position - _PostPointBuffer[id.x].position) / deltaTime;
-    _PredictPointBuffer[id.x].velocity = v1;
+    _PredictPointBuffer[id.x].velocity = v1 * 0.95f; //0.95是伽马值
     
-    _PostPointBuffer[id.x].position = _PredictPointBuffer[id.x].position;
-    _PostPointBuffer[id.x].velocity = _PredictPointBuffer[id.x].velocity;
+    _PostPointBuffer[id.x] = _PredictPointBuffer[id.x];
 }
 
 [numthreads(1,1,1)]
@@ -59,7 +58,7 @@ void EstimatePos(uint3 id: SV_DispatchThreadID)
     
     if(m > 0)
     {
-        float3 v1 = v0 + float3(0.0f, -0.001f, 0.0f) * deltaTime ;
+        float3 v1 = v0 + float3(0.0f, 0.1f, 0.0f) * deltaTime ;
         float3 pos1 = pos + v1 * deltaTime;
         _PredictPointBuffer[id.x].position = pos1;
     }
@@ -67,6 +66,8 @@ void EstimatePos(uint3 id: SV_DispatchThreadID)
     {
         _PredictPointBuffer[id.x].position = pos;
     }
+    
+    _PredictPointBuffer[0].position = float3(10.0f, 2.0f, 10.0f);
 }
 
 [numthreads(1,1,1)]
@@ -101,16 +102,16 @@ void Constraint_Distance(uint3 id : SV_DispatchThreadID)
     float C = (dis - myInfo.restDistance);
     float gradC_2 = pow(gradC_Length, 2); //这个实际上是平方
     
-    float alpha = 200; /// (deltaTime * deltaTime * 10 * 10);
+    float alpha = 1.0f ; /// (deltaTime * deltaTime * 10 * 10);
     // 我们采用的是每帧更新 n次约束，因此lambda每次都应该重置为0,也就可以将d_lambda等同于lambda
     // d_lambda = (-C - alpha*lambda) / (gradC * w_T * gradC_T + alpha)
     float d_lambda = (-C - alpha * lambda) / (mT * gradC_2 + alpha);
    
     _DistanceBuffer[id.x].lambda += d_lambda;
-    _DistanceBuffer[id.x].lambda *= 0.9;
+    _DistanceBuffer[id.x].lambda *= 0.95;
     //_DistanceBuffer[id.x].lambda += d_lambda;
     //x = x + deltaX where deltaX = gradC * w_T(i) * lambda
-    float3 pos_0 = m0   * d_lambda * gradC_p0 ;
+    float3 pos_0 = m0  * d_lambda * gradC_p0 ;
     float3 pos_1 = m1  * d_lambda * gradC_p1 ;
     _PredictPointBuffer[v0].position += pos_0;
     _PredictPointBuffer[v1].position += pos_1; //对上述求导过程未区分的修正
@@ -120,7 +121,78 @@ void Constraint_Distance(uint3 id : SV_DispatchThreadID)
 [numthreads(1, 1, 1)]
 void Constraint_Bend(uint3 id : SV_DispatchThreadID)
 {
+       //得到当前的遍历信息
+    BendConstraintInfo myInfo = _BendBuffer[id.x];
 
+    float lambda = myInfo.lambda;
+    
+    int v0 = myInfo.vIndex0;
+    int v1 = myInfo.vIndex1;
+    int v2 = myInfo.vIndex2;
+    int v3 = myInfo.vIndex3;
+    
+    PointInfo p0 = _PostPointBuffer[v0];
+    PointInfo p1 = _PostPointBuffer[v1];
+    PointInfo p2 = _PostPointBuffer[v2];
+    PointInfo p3 = _PostPointBuffer[v3];
+    
+    float m0 = p0.mass;
+    float m1 = p1.mass;
+    float m2 = p2.mass;
+    float m3 = p3.mass;
+    float mT = m0 + m1 + m2 + m3;
+
+    //相对位置好算一点
+    float3 pos0 = p0.position;
+    float3 pos1 = p1.position - pos0; 
+    float3 pos2 = p2.position - pos0;
+    float3 pos3 = p3.position - pos0;
+    pos0 = float3(0, 0, 0);
+
+    
+    float3 p23Len = length(cross(pos1, pos2));
+    float3 p24Len = length(cross(pos1, pos3));
+    
+    p23Len = max(length(cross(pos1, pos2)), 1e-6f);
+    p24Len = max(length(cross(pos1, pos3)), 1e-6f);
+    
+    float3 n1 = normalize(cross(pos1, pos2));
+    float3 n2 = normalize(cross(pos1, pos3));
+    float d = dot(n1, n2);
+    d = clamp(dot(n1, n2), -1.0f, 1.0f);
+    
+    float3 q2 = (cross(pos1, n2) + cross(n1, pos1) * d) / p23Len;
+    float3 q3 = (cross(pos1, n1) + cross(n2, pos1) * d) / p24Len;
+    float3 q1 = -(cross(pos2, n2) + cross(n1, pos2) * d) / p23Len
+            - (cross(pos3, n1) + cross(n2, pos3) * d) / p24Len;
+    float3 q0 = -q1 - q2 - q3;
+    
+    
+    float sum = m0 * pow(length(q0), 2) + m1 * pow(length(q1), 2) + m2 * pow(length(q2), 2) + m3 * pow(length(q3), 2);
+    sum = max(0.01f, sum);
+    
+    float C = acos(d) - myInfo.rest;
+
+    
+    float alpha = 1.0f; /// (deltaTime * deltaTime * 10 * 10);
+    // 我们采用的是每帧更新 n次约束，因此lambda每次都应该重置为0,也就可以将d_lambda等同于lambda
+    // d_lambda = (-C - alpha*lambda) / (gradC * w_T * gradC_T + alpha)
+    float d_lambda = (-C - alpha * lambda) / (sum + alpha);
+   
+    _BendBuffer[id.x].lambda += d_lambda;
+    _BendBuffer[id.x].lambda *= 0.95;
+    //_DistanceBuffer[id.x].lambda += d_lambda;
+    //x = x + deltaX where deltaX = gradC * w_T(i) * lambda
+    float3 pos_0 = m0 * d_lambda * q0;
+    float3 pos_1 = m1 * d_lambda * q1;
+    float3 pos_2 = m2 * d_lambda * q2;
+    float3 pos_3 = m3 * d_lambda * q3;
+    
+    _PredictPointBuffer[v0].position += pos_0;
+    _PredictPointBuffer[v1].position += pos_1;
+    _PredictPointBuffer[v2].position += pos_2;
+    _PredictPointBuffer[v3].position += pos_3;
+   
 }
 
 [numthreads(1, 1, 1)]

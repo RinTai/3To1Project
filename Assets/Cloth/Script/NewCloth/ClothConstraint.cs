@@ -148,7 +148,7 @@ namespace ClothXPBD
         /// <param name="commandBuffer"></param>
         public void ComputeCall(CommandBuffer commandBuffer)
         {
-            int3 DispatchArgs = new int3(constraints.Length, 1, 1);
+            int3 DispatchArgs = new int3(constraints.Length , 1, 1);
             commandBuffer.SetComputeBufferParam(computeShader, baseKernelID, baseBufferName, baseConstraintBuffer);
             commandBuffer.DispatchCompute(computeShader, baseKernelID, DispatchArgs.x, DispatchArgs.y, DispatchArgs.z);
         }
@@ -207,7 +207,7 @@ namespace ClothXPBD
 
         public void ComputeCall(CommandBuffer commandBuffer)
         {
-            int3 DispatchArgs = new int3(points.Length , 1, 1);
+            int3 DispatchArgs = new int3(points.Length  , 1, 1);
             commandBuffer.SetComputeBufferParam(computeShader, baseKernelID, bufferName_Now, pointBuffer_Now);
             commandBuffer.SetComputeBufferParam(computeShader, baseKernelID, bufferName_Post, pointBuffer_Post);
             commandBuffer.DispatchCompute(computeShader, baseKernelID, DispatchArgs.x, DispatchArgs.y, DispatchArgs.z);
